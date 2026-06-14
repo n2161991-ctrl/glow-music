@@ -1,0 +1,98 @@
+workflows:
+  android-capacitor-build:
+    name: Glow Music APK Build
+    max_build_duration: 15
+    instance_type: mac_mini_m1
+    environment:
+      node: lts
+      java: 17
+    triggering:
+      events:
+        - push
+    scripts:
+      - name: Crear esqueleto base del proyecto y configuracion limpia
+        script: |
+          if [ ! -f package.json ]; then
+            echo "Generando esqueleto inicial para React y Capacitor..."
+            npm init -y
+            npm pkg set name="glow-music"
+            npm pkg set version="1.0.0"
+            npm pkg set scripts.build="echo 'Estructura Web OK'"
+            mkdir -p dist
+            echo '<html><head><title>Glow Music</title></head><body style="background:#121212;color:white;text-align:center;padding-top:50px;"><h1>Glow Music Iniciando...</h1></body></html>' > dist/index.html
+          fi
+
+          # Creamos el archivo de configuracion oficial de Capacitor en la raiz
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "com.glowmusic.app",
+            "appName": "Glow Music",
+            "webDir": "dist",
+            "bundledWebRuntime": false
+          }
+          EOF
+
+      - name: Instalar dependencias del proyecto y generador de iconos
+        script: |
+          npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
+          npm install @capacitor-community/admob@latest @capacitor-community/media@latest
+          npm install @capacitor/toast@latest @capacitor/app@latest @capacitor/device@latest
+          npm install -D @capacitor/assets
+
+      - name: Inicializar y Configurar Capacitor Assets para el Icono de Glow
+        script: |
+          mkdir -p assets
+          if [ ! -f assets/logo_glow.png ]; then
+            echo "Icono personalizado no encontrado en assets/logo_glow.png. Usando respaldo."
+            cp dist/index.html assets/icon-only.png || touch assets/icon-only.png
+          else
+            cp assets/logo_glow.png assets/icon-only.png
+            cp assets/logo_glow.png assets/icon.png
+            cp assets/logo_glow.png assets/splash.png
+          fi
+
+      - name: Inicializar Plataforma Android Nativa de Cero
+        script: |
+          # Borramos cualquier intento fallido anterior para limpiar el contenedor de Codemagic
+          rm -rf android
+          npx cap add android
+
+      - name: Inyectar Iconos Oficiales en Android
+        script: |
+          npx capacitor-assets generate --android
+
+      - name: Forzar Versiones de Gradle y SDK 36 Global
+        script: |
+          # Modificamos de forma segura el archivo raiz de Gradle para forzar el SDK 36 y dependencias requeridas
+          cat << 'EOF' > android/variables.gradle
+          ext {
+              minSdkVersion = 22
+              compileSdkVersion = 36
+              targetSdkVersion = 36
+              androidxActivityVersion = '1.8.0'
+              androidxAppCompatVersion = '1.6.1'
+              androidxCoordinatorLayoutVersion = '1.2.0'
+              androidxCoreVersion = '1.12.0'
+              androidxFragmentVersion = '1.6.2'
+              coreSplashScreenVersion = '1.0.1'
+              androidxWebkitVersion = '1.9.0'
+              firebaseMessagingVersion = '23.3.1'
+              playServicesLocationVersion = '21.0.1'
+              junitVersion = '4.13.2'
+              androidxJunitVersion = '1.1.5'
+              androidxEspressoCoreVersion = '3.5.1'
+          }
+          EOF
+
+      - name: Sincronizar Plugins de Sonido y Anuncios
+        script: |
+          npx cap sync android
+          chmod +x android/gradlew
+
+      - name: Compilar APK final de produccion
+        script: |
+          cd android
+          ./gradlew assembleDebug --no-daemon
+          
+    artifacts:
+      - android/app/build/outputs/apk/debug/*.apk
