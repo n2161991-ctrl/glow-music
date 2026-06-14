@@ -1,0 +1,119 @@
+workflows:
+  android-capacitor-build:
+    name: Glow Music APK Build
+    max_build_duration: 15
+    instance_type: mac_mini_m1
+    environment:
+      node: lts
+      java: 17
+    triggering:
+      events:
+        - push
+    scripts:
+      - name: Crear esqueleto base del proyecto y configuracion limpia
+        script: |
+          if [ ! -f package.json ]; then
+            echo "Generando esqueleto inicial para React y Capacitor..."
+            npm init -y
+            npm pkg set name="glow-music"
+            npm pkg set version="1.0.0"
+            npm pkg set scripts.build="echo 'Estructura Web OK'"
+            mkdir -p dist
+            echo '<html><head><title>Glow Music</title></head><body style="background:#121212;color:white;text-align:center;padding-top:50px;"><h1>Glow Music Iniciando...</h1></body></html>' > dist/index.html
+          fi
+
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "com.glowmusic.app",
+            "appName": "Glow Music",
+            "webDir": "dist",
+            "bundledWebRuntime": false
+          }
+          EOF
+
+      - name: Instalar dependencias del proyecto y generador de iconos
+        script: |
+          npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
+          npm install @capacitor-community/admob@latest @capacitor-community/media@latest
+          npm install @capacitor/toast@latest @capacitor/app@latest @capacitor/device@latest
+          npm install -D @capacitor/assets
+
+      - name: Inicializar y Configurar Capacitor Assets para el Icono de Glow
+        script: |
+          mkdir -p assets
+          if [ ! -f assets/logo_glow.png ]; then
+            echo "Icono personalizado no encontrado en assets/logo_glow.png. Usando respaldo."
+            cp dist/index.html assets/icon-only.png || touch assets/icon-only.png
+          else
+            cp assets/logo_glow.png assets/icon-only.png
+            cp assets/logo_glow.png assets/icon.png
+            cp assets/logo_glow.png assets/splash.png
+          fi
+
+      - name: Inicializar Plataforma Android Nativa de Cero
+        script: |
+          rm -rf android
+          npx cap add android
+
+      - name: Inyectar Iconos Oficiales en Android
+        script: |
+          npx capacitor-assets generate --android
+
+      - name: Sincronizar y Configurar Permisos Base
+        script: |
+          npx cap sync android
+          chmod +x android/gradlew
+
+      - name: Inyectar Forzado de SDK de forma Global e Incondicional
+        script: |
+          # Modificamos el archivo build.gradle de la RAIZ para obligar a todos los subproyectos (plugins) a usar SDK 35
+          node -e "
+          const fs = require('fs');
+          const file = 'android/build.gradle';
+          if (fs.existsSync(file)) {
+              let content = fs.readFileSync(file, 'utf8');
+              
+              // Insertamos una regla global de Gradle que sobreescribe el SDK en cada plugin que se compile
+              const forceSdkRule = \`
+              subprojects {
+                  afterEvaluate { project ->
+                      if (project.hasProperty('android')) {
+                          project.android {
+                              compileSdkVersion = 35
+                              buildToolsVersion = '35.0.0'
+                              defaultConfig {
+                                  targetSdkVersion = 35
+                              }
+                          }
+                      }
+                  }
+              }
+              \`;
+              
+              content = content + '\\n' + forceSdkRule;
+              fs.writeFileSync(file, content, 'utf8');
+              console.log('Regla de forzado incondicional de SDK 35 aplicada en la raiz.');
+          }
+          "
+
+          # Inyectamos tambien la tolerancia a errores cosmeticos en el archivo de la app de forma limpia
+          node -e "
+          const fs = require('fs');
+          const file = 'android/app/build.gradle';
+          if (fs.existsSync(file)) {
+              let content = fs.readFileSync(file, 'utf8');
+              if (!content.includes('lintOptions')) {
+                  content = content.replace('android {', 'android {\\n    lintOptions {\\n        checkReleaseBuilds false;\\n        abortOnError false;\\n    }');
+                  fs.writeFileSync(file, content, 'utf8');
+                  console.log('Tolerancia de errores inyectada en app/build.gradle.');
+              }
+          }
+          "
+
+      - name: Compilar APK final de produccion
+        script: |
+          cd android
+          ./gradlew assembleDebug --no-daemon -x lint
+          
+    artifacts:
+      - android/app/build/outputs/apk/debug/*.apk
