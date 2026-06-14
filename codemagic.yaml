@@ -1,0 +1,74 @@
+workflows:
+  android-capacitor-build:
+    name: Glow Music APK Build
+    max_build_duration: 15
+    instance_type: mac_mini_m1
+    environment:
+      node: lts
+      java: 17
+    triggering:
+      events:
+        - push
+    scripts:
+      - name: Crear estructura base del proyecto automaticamente
+        script: |
+          if [ ! -f package.json ]; then
+            echo "Generando esqueleto inicial para React y Capacitor..."
+            npm init -y
+            npm pkg set name="glow-music"
+            npm pkg set version="1.0.0"
+            npm pkg set scripts.build="echo 'Estructura Web OK'"
+            mkdir -p dist
+            echo '<html><head><title>Glow Music</title></head><body style="background:#121212;color:white;text-align:center;padding-top:50px;"><h1>Glow Music Iniciando...</h1></body></html>' > dist/index.html
+          fi
+
+      - name: Instalar dependencias del proyecto y generador de iconos
+        script: |
+          npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
+          npm install @capacitor-community/admob@latest @capacitor-community/media@latest
+          npm install @capacitor/toast@latest @capacitor/app@latest @capacitor/device@latest
+          npm install -D @capacitor/assets
+
+      - name: Inicializar y Configurar Capacitor Assets para el Icono de Glow
+        script: |
+          mkdir -p assets
+          if [ ! -f assets/logo_glow.png ]; then
+            echo "Icono personalizado no encontrado en assets/logo_glow.png. Usando respaldo."
+            cp dist/index.html assets/icon-only.png || touch assets/icon-only.png
+          else
+            cp assets/logo_glow.png assets/icon-only.png
+            cp assets/logo_glow.png assets/icon.png
+            cp assets/logo_glow.png assets/splash.png
+          fi
+
+      - name: Configurar e Inicializar Android Nativo
+        script: |
+          if [ ! -d "android" ]; then
+            npx cap init "Glow Music" "com.glowmusic.app" --web-dir=dist
+            npx cap add android
+          fi
+
+      - name: Generar e Inyectar Iconos de Glow en el Proyecto Android
+        script: |
+          npx capacitor-assets generate --android
+
+      - name: Actualizar SDK de Android para Plugins
+        script: |
+          # Sube las versiones de compilacion al SDK 36 requerido por core-ktx
+          if [ -f android/variables.gradle ]; then
+            sed -i '' 's/compileSdkVersion = .*/compileSdkVersion = 36/g' android/variables.gradle 2>/dev/null || sed -i 's/compileSdkVersion = .*/compileSdkVersion = 36/g' android/variables.gradle
+            sed -i '' 's/targetSdkVersion = .*/targetSdkVersion = 36/g' android/variables.gradle 2>/dev/null || sed -i 's/targetSdkVersion = .*/targetSdkVersion = 36/g' android/variables.gradle
+            sed -i '' 's/minSdkVersion = .*/minSdkVersion = 22/g' android/variables.gradle 2>/dev/null || sed -i 's/minSdkVersion = .*/minSdkVersion = 22/g' android/variables.gradle
+          fi
+
+      - name: Sincronizar y Reparar Permisos Android
+        script: |
+          npx cap sync android
+          chmod +x android/gradlew
+
+      - name: Compilar APK final de produccion
+        script: |
+          cd android && ./gradlew assembleDebug --no-daemon
+          
+    artifacts:
+      - android/app/build/outputs/apk/debug/*.apk
