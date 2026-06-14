@@ -1,0 +1,10 @@
+{
+  "appId": "com.glowmusic.player",
+  "appName": "Glow Music",
+  "webDir": "dist",
+  "plugins": {
+    "AdMob": {
+      "androidAppId": "ca-app-pub-1097827806569844~4462063144"
+    }
+  }
+}
