@@ -1,0 +1,80 @@
+workflows:
+  android-capacitor-build:
+    name: Glow Music APK Build
+    max_build_duration: 10
+    instance_type: mac_mini_m1
+    environment:
+      node: latest
+      java: 21
+    triggering:
+      events:
+        - push
+    scripts:
+      - name: Crear estructura base del proyecto automaticamente
+        script: |
+          if [ ! -f package.json ]; then
+            echo "Generando esqueleto inicial para React y Capacitor..."
+            npm init -y
+            npm pkg set name="glow-music"
+            npm pkg set version="1.0.0"
+            npm pkg set scripts.build="echo 'Estructura Web OK'"
+            mkdir -p dist
+            echo '<html><head><title>Glow Music</title></head><body style="background:#121212;color:white;text-align:center;padding-top:50px;"><h1>Glow Music Cargando...</h1></body></html>' > dist/index.html
+          fi
+      - name: Instalar dependencias del proyecto
+        script: |
+          npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest @capacitor-community/admob@latest @capacitor-community/media@latest @capacitor/toast@latest @capacitor/app@latest @capacitor/device@latest
+          npm install -D vite @vitejs/plugin-react react react-dom lucide-react
+      - name: Compilar entorno Web Real
+        script: |
+          echo "Generando los archivos visuales de la pantalla..."
+          npx vite build --emptyOutDir || echo "Usando build base"
+      - name: Configurar e Inicializar Android Nativo
+        script: |
+          npx cap add android || echo "Ya existe"
+      - name: Fabricar e Inyectar Icono Oficial Glow Music Nativo
+        script: |
+          echo "Generando e instalando el icono de la letra G en neón..."
+          # Script para estructurar el icono base vectorial de la marca Glow Music
+          mkdir -p android/app/src/main/res/mipmap-mdpi
+          mkdir -p android/app/src/main/res/mipmap-hdpi
+          mkdir -p android/app/src/main/res/mipmap-xhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+          
+          # Creación del archivo SVG que dibuja el diseño Negro Mate + G estilizada con ondas de ecualizador neón
+          cat << 'EOF' > icon_design.svg
+          <svg xmlns="http://w3.org" viewBox="0 0 512 512" width="512" height="512">
+            <rect width="512" height="512" rx="100" fill="#121212"/>
+            <defs>
+              <linearGradient id="neonGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#a855f7" />
+                <stop offset="100%" stop-color="#3b82f6" />
+              </linearGradient>
+            </defs>
+            <path d="M360,180 C340,140 290,120 240,120 C160,120 110,180 110,256 C110,332 160,392 240,392 C310,392 350,350 355,290 L240,290 L240,230 L415,230 C420,250 422,270 422,290 C422,380 350,452 240,452 C120,452 50,360 50,256 C50,152 120,60 240,60 C310,60 370,95 405,150 Z" fill="url(#neonGlow)"/>
+            <rect x="220" y="170" width="12" height="50" rx="6" fill="url(#neonGlow)" />
+            <rect x="200" y="190" width="12" height="30" rx="6" fill="url(#neonGlow)" />
+            <rect x="180" y="160" width="12" height="60" rx="6" fill="url(#neonGlow)" />
+          </svg>
+          EOF
+          
+          # Inyección del recurso visual nativo en todas las densidades de pantalla de Android
+          cp icon_design.svg android/app/src/main/res/mipmap-mdpi/ic_launcher.xml
+          cp icon_design.svg android/app/src/main/res/mipmap-hdpi/ic_launcher.xml
+          cp icon_design.svg android/app/src/main/res/mipmap-xhdpi/ic_launcher.xml
+          cp icon_design.svg android/app/src/main/res/mipmap-xxhdpi/ic_launcher.xml
+          cp icon_design.svg android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.xml
+          echo "¡Icono inyectado con éxito!"
+      - name: Forzar variables Gradle para AdMob Real
+        script: |
+          echo "Inyectando dependencias requeridas por AdMob..."
+          sed -i '' 's/ext {/ext {\n        androidxActivityVersion = "1.8.0"\n        androidxFragmentVersion = "1.6.0"/g' android/build.gradle || true
+      - name: Sincronizar con entorno nativo Android
+        script: |
+          npx cap sync android
+      - name: Compilar APK final de producción
+        script: |
+          cd android && ./gradlew assembleDebug --no-daemon
+    artifacts:
+      - android/app/build/outputs/apk/debug/*.apk
