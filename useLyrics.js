@@ -3,7 +3,7 @@ import { Preferences } from '@capacitor/preferences';
 import { Network } from '@capacitor/network';
 import * as cheerio from 'cheerio';
 
-const GENIUS_TOKEN = 'PON_TU_TOKEN_AQUI';
+const GENIUS_TOKEN = 'ZnfgUD40wylNsNNtP06hScPvEVZxBOQiPJ4qHVnwQmeH1rbwH5tB0WgyxT3bBsI0';
 
 export function useLyrics(song) {
   const [lyrics, setLyrics] = useState('');
